@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Suspense } from 'react';
-import { Canvas } from '@react-three/fiber';
-import { Sky, Stats } from '@react-three/drei';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { Sky } from '@react-three/drei';
 import { createWorld, getWorld } from '../../utils/api';
 import { BlockType, PlayerState, WorldData } from '../../utils/types';
 import { preloadTextures } from '../../utils/textures';
@@ -9,6 +9,14 @@ import Player from './Player';
 import Hotbar from '../ui/Hotbar';
 import Crosshair from '../ui/Crosshair';
 import './Game.css';
+
+// Create a separate component to handle frame counting
+const FrameCounter = ({ onFrame }: { onFrame: () => void }) => {
+  useFrame(() => {
+    onFrame();
+  });
+  return null;
+};
 
 const Game: React.FC = () => {
   const [worldData, setWorldData] = useState<WorldData | null>(null);
@@ -19,7 +27,8 @@ const Game: React.FC = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showStats, setShowStats] = useState(true); // Default to showing stats for debugging
+  const [currentFps, setCurrentFps] = useState<number>(0);
+  const [showPerformanceWarning, setShowPerformanceWarning] = useState<boolean>(false);
   
   // Store update times for throttling
   const lastPositionUpdate = useRef<number>(0);
@@ -28,11 +37,20 @@ const Game: React.FC = () => {
     lastCheck: number;
     lowPerformanceCount: number;
     isLowPerformance: boolean;
+    lastWarningTime: number;
+    warningDismissed: boolean;
   }>({
     lastCheck: 0,
     lowPerformanceCount: 0,
-    isLowPerformance: false
+    isLowPerformance: false,
+    lastWarningTime: 0,
+    warningDismissed: false
   });
+  
+  // Handle individual frame
+  const handleFrame = () => {
+    frameCount.current++;
+  };
   
   // Monitor performance and detect potential issues
   useEffect(() => {
@@ -41,26 +59,39 @@ const Game: React.FC = () => {
       
       // Calculate FPS
       const elapsed = now - performanceMonitor.current.lastCheck;
-      const fps = frameCount.current / (elapsed / 1000);
-      
-      console.log(`[DEBUG] Game Performance: FPS: ${fps.toFixed(1)}, Frame count: ${frameCount.current}`);
-      
-      // Reset counters
-      frameCount.current = 0;
-      performanceMonitor.current.lastCheck = now;
-      
-      // Detect low performance
-      if (fps < 20) {
-        performanceMonitor.current.lowPerformanceCount++;
-        console.warn(`[DEBUG] Low performance detected: ${fps.toFixed(1)} FPS`);
+      if (elapsed > 0) {  // Prevent division by zero
+        const fps = frameCount.current / (elapsed / 1000);
         
-        if (performanceMonitor.current.lowPerformanceCount > 5 && !performanceMonitor.current.isLowPerformance) {
-          console.error("[DEBUG] Consistent low performance detected, enabling low performance mode");
-          performanceMonitor.current.isLowPerformance = true;
-          // You could add code here to scale down quality settings
+        console.log(`[DEBUG] Game Performance: FPS: ${fps.toFixed(1)}, Frame count: ${frameCount.current}`);
+        
+        // Update the FPS display
+        setCurrentFps(Math.round(fps));
+        
+        // Reset counters
+        frameCount.current = 0;
+        performanceMonitor.current.lastCheck = now;
+        
+        // Detect low performance
+        if (fps < 20) {
+          performanceMonitor.current.lowPerformanceCount++;
+          console.warn(`[DEBUG] Low performance detected: ${fps.toFixed(1)} FPS`);
+          
+          if (performanceMonitor.current.lowPerformanceCount > 5 && !performanceMonitor.current.isLowPerformance) {
+            console.error("[DEBUG] Consistent low performance detected, enabling low performance mode");
+            performanceMonitor.current.isLowPerformance = true;
+            
+            // Show warning if not dismissed and not shown in the last 3 minutes
+            const threeMinutesInMs = 3 * 60 * 1000;
+            if (!performanceMonitor.current.warningDismissed && 
+                (now - performanceMonitor.current.lastWarningTime > threeMinutesInMs || 
+                 performanceMonitor.current.lastWarningTime === 0)) {
+              setShowPerformanceWarning(true);
+              performanceMonitor.current.lastWarningTime = now;
+            }
+          }
+        } else {
+          performanceMonitor.current.lowPerformanceCount = 0;
         }
-      } else {
-        performanceMonitor.current.lowPerformanceCount = 0;
       }
     }, 1000);
     
@@ -132,9 +163,7 @@ const Game: React.FC = () => {
     const handleKeyPress = (e: KeyboardEvent) => {
       console.log(`Key pressed: ${e.key}`);
       
-      if (e.key === 'F3') {
-        setShowStats(prev => !prev);
-      } else if (e.key === 'Escape') {
+      if (e.key === 'Escape') {
         document.exitPointerLock();
       }
     };
@@ -161,7 +190,7 @@ const Game: React.FC = () => {
   };
   
   // Handle player rotation with efficient updates
-  const handlePlayerRotate = (rotation: [number, number, number]) => {
+  const handlePlayerRotate = () => {
     // No need to store every rotation update in state
     // It's only used for UI, so we update the player component directly
   };
@@ -178,14 +207,9 @@ const Game: React.FC = () => {
   const renderCount = useRef(0);
   console.log(`[DEBUG] Game component render #${++renderCount.current}`);
   
-  // Count frames for performance monitoring with more detailed logging
-  const handleFrameLoop = () => {
-    frameCount.current++;
-    
-    // Log every 1000 frames to identify potential loop issues
-    if (frameCount.current % 1000 === 0) {
-      console.log(`[DEBUG] Game frame count: ${frameCount.current}, player position: ${playerState.position}`);
-    }
+  const dismissPerformanceWarning = () => {
+    setShowPerformanceWarning(false);
+    performanceMonitor.current.warningDismissed = true;
   };
   
   // Show loading screen
@@ -215,7 +239,7 @@ const Game: React.FC = () => {
         shadows: false,
         gl: { 
           antialias: false,
-          powerPreference: 'high-performance',
+          powerPreference: 'high-performance' as const,
           depth: true,
           stencil: false,
           alpha: false,
@@ -227,7 +251,7 @@ const Game: React.FC = () => {
         shadows: true,
         gl: { 
           antialias: false,
-          powerPreference: 'high-performance',
+          powerPreference: 'high-performance' as const,
           depth: true,
           stencil: false,
           alpha: false,
@@ -242,12 +266,11 @@ const Game: React.FC = () => {
       <Canvas 
         onCreated={() => console.log("Canvas created")}
         frameloop="always"  // Always render frames for better control
-        onBeforeRender={handleFrameLoop}
         {...qualitySettings}
       >
         <Suspense fallback={null}>
-          {/* Performance stats (toggle with F3) */}
-          {showStats && <Stats />}
+          {/* Frame counter */}
+          <FrameCounter onFrame={handleFrame} />
           
           {/* Sky */}
           <Sky sunPosition={[100, 100, 20]} />
@@ -273,6 +296,11 @@ const Game: React.FC = () => {
         </Suspense>
       </Canvas>
       
+      {/* FPS Display */}
+      <div className="fps-counter">
+        FPS: {currentFps}
+      </div>
+      
       {/* UI Elements */}
       <Crosshair />
       <Hotbar onSelectBlock={handleSelectBlock} />
@@ -283,13 +311,13 @@ const Game: React.FC = () => {
         <p>Left click to break blocks, right click to place blocks</p>
         <p>1-9 keys to select blocks</p>
         <p>Click to lock mouse, ESC to unlock</p>
-        <p>Press F3 to toggle performance stats</p>
       </div>
       
       {/* Performance warning */}
-      {performanceMonitor.current.isLowPerformance && (
+      {showPerformanceWarning && (
         <div className="performance-warning">
-          Low performance detected. Quality settings have been reduced.
+          <span>Low performance detected. Quality settings have been reduced.</span>
+          <button className="close-button" onClick={dismissPerformanceWarning}>×</button>
         </div>
       )}
     </div>
