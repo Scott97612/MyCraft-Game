@@ -100,10 +100,10 @@ const Player: React.FC<PlayerProps> = ({ onPlayerMove, onPlayerRotate }) => {
     console.log(`Key down: ${e.code}`);
     switch (e.code) {
       case 'KeyW':
-        setMoveBackward(true); // W is negative Z (forward in three.js)
+        setMoveForward(true); // W should move forward (negative Z in three.js)
         break;
       case 'KeyS':
-        setMoveForward(true); // S is positive Z (backward in three.js)
+        setMoveBackward(true); // S should move backward (positive Z in three.js)
         break;
       case 'KeyA':
         setMoveLeft(true);
@@ -123,10 +123,10 @@ const Player: React.FC<PlayerProps> = ({ onPlayerMove, onPlayerRotate }) => {
     console.log(`Key up: ${e.code}`);
     switch (e.code) {
       case 'KeyW':
-        setMoveBackward(false); // W is negative Z (forward in three.js)
+        setMoveForward(false); // W should move forward (negative Z in three.js)
         break;
       case 'KeyS':
-        setMoveForward(false); // S is positive Z (backward in three.js)
+        setMoveBackward(false); // S should move backward (positive Z in three.js)
         break;
       case 'KeyA':
         setMoveLeft(false);
