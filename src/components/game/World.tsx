@@ -53,6 +53,9 @@ const World: React.FC<WorldProps> = ({ worldId, seed, initialChanges, selectedBl
   // Track current player chunk
   const playerChunkRef = useRef({ x: 0, y: 0, z: 0 });
   
+  // Track broken blocks for collision detection
+  const brokenBlocks = useRef(new Set<string>());
+  
   // Initialize terrain generator
   useEffect(() => {
     console.log("[TERRAIN] Creating terrain generator with seed:", seed);
@@ -75,57 +78,40 @@ const World: React.FC<WorldProps> = ({ worldId, seed, initialChanges, selectedBl
     }
   }, [seed]);
   
-  // Function to generate initial chunks around the origin
-  const generateInitialChunks = useCallback((generator: TerrainGenerator) => {
-    if (isInitialChunksLoaded) return;
-    
-    console.log("[WORLD] Generating initial chunks...");
-    const initialChunks: ChunkData[] = [];
-    
-    // Generate chunks around the player's starting position (0, 20, 0)
-    const startX = Math.floor(0 / CHUNK_SIZE);
-    const startY = Math.floor(20 / CHUNK_SIZE);
-    const startZ = Math.floor(0 / CHUNK_SIZE);
-    
-    // Store the initial player chunk for reference
-    playerChunkRef.current = { x: startX, y: startY, z: startZ };
-    
-    // Generate a sufficient cube of chunks around player's starting position
-    for (let x = startX - 1; x <= startX + 1; x++) {
-      for (let y = startY - 1; y <= startY + 1; y++) {
-        for (let z = startZ - 1; z <= startZ + 1; z++) {
-          const chunkKey = getChunkKey(x, y, z);
+  // 1. Create a function to update the terrain reference with the latest broken blocks - should be defined first
+  const updateTerrainReference = useCallback((generator: TerrainGenerator) => {
+    // Create a terrain reference that considers broken blocks
+    const terrainWithChanges = {
+      getHeight: (x: number, z: number): number => {
+        if (!generator) return 10; // Default fallback
           
-          if (!loadedChunks.current.has(chunkKey)) {
-            try {
-              const chunk = generator.generateChunk(x, y, z, CHUNK_SIZE);
-              
-              // Apply any existing changes to this chunk
-              applyChangesToChunk(chunk, changes);
-              
-              initialChunks.push(chunk);
-              loadedChunks.current.set(chunkKey, chunk);
-              visibleChunks.current.add(chunkKey);
-            } catch (error) {
-              console.error(`[WORLD] Error generating chunk at ${chunkKey}:`, error);
-            }
+        // Get the base terrain height at this position
+        let baseHeight = generator.getHeight(x, z);
+        
+        // Now check for broken blocks to adjust the height
+        // We need to check all blocks from the terrain height downward
+        for (let y = baseHeight; y > 0; y--) {
+          const blockKey = makeBlockKey(x, y, z);
+          
+          // If this block has been broken
+          if (brokenBlocks.current.has(blockKey)) {
+            // If the block at this position is broken, the new height is one below
+            baseHeight = y - 1;
+          } else {
+            // Stop checking once we find a non-broken block
+            break;
           }
         }
+        
+        return baseHeight;
       }
-    }
+    };
     
-    if (initialChunks.length > 0) {
-      setChunks(initialChunks);
-      setIsInitialChunksLoaded(true);
-      console.log(`[WORLD] Generated ${initialChunks.length} initial chunks`);
-      
-      chunkMetrics.current.totalGeneratedChunks += initialChunks.length;
-      chunkMetrics.current.visibleChunkCount = initialChunks.length;
-      chunkMetrics.current.totalLoadedChunks = initialChunks.length;
-    }
-  }, [isInitialChunksLoaded, changes]);
+    // Set the terrain reference for collision detection
+    setTerrainReference(terrainWithChanges);
+  }, []);
   
-  // Apply changes to a chunk
+  // 2. Apply changes to a chunk - should be defined before being used
   const applyChangesToChunk = useCallback((chunk: ChunkData, changesList: BlockChange[]) => {
     // Get chunk coordinates
     const chunkX = chunk.x ?? chunk.position.x;
@@ -189,6 +175,59 @@ const World: React.FC<WorldProps> = ({ worldId, seed, initialChanges, selectedBl
     
     return updatedChunk;
   }, []);
+  
+  // 3. Generate initial chunks - should be defined after the functions it depends on
+  const generateInitialChunks = useCallback((generator: TerrainGenerator) => {
+    if (isInitialChunksLoaded) return;
+    
+    console.log("[WORLD] Generating initial chunks...");
+    const initialChunks: ChunkData[] = [];
+    
+    // Generate chunks around the player's starting position (0, 20, 0)
+    const startX = Math.floor(0 / CHUNK_SIZE);
+    const startY = Math.floor(20 / CHUNK_SIZE);
+    const startZ = Math.floor(0 / CHUNK_SIZE);
+    
+    // Store the initial player chunk for reference
+    playerChunkRef.current = { x: startX, y: startY, z: startZ };
+    
+    // Generate a sufficient cube of chunks around player's starting position
+    for (let x = startX - 1; x <= startX + 1; x++) {
+      for (let y = startY - 1; y <= startY + 1; y++) {
+        for (let z = startZ - 1; z <= startZ + 1; z++) {
+          const chunkKey = getChunkKey(x, y, z);
+          
+          if (!loadedChunks.current.has(chunkKey)) {
+            try {
+              const chunk = generator.generateChunk(x, y, z, CHUNK_SIZE);
+              
+              // Apply any existing changes to this chunk
+              const updatedChunk = applyChangesToChunk(chunk, changes);
+              
+              initialChunks.push(updatedChunk);
+              loadedChunks.current.set(chunkKey, updatedChunk);
+              visibleChunks.current.add(chunkKey);
+            } catch (error) {
+              console.error(`[WORLD] Error generating chunk at ${chunkKey}:`, error);
+            }
+          }
+        }
+      }
+    }
+    
+    if (initialChunks.length > 0) {
+      setChunks(initialChunks);
+      setIsInitialChunksLoaded(true);
+      console.log(`[WORLD] Generated ${initialChunks.length} initial chunks`);
+      
+      chunkMetrics.current.totalGeneratedChunks += initialChunks.length;
+      chunkMetrics.current.visibleChunkCount = initialChunks.length;
+      chunkMetrics.current.totalLoadedChunks = initialChunks.length;
+
+      // Create updated terrain reference to ensure accurate collision detection
+      updateTerrainReference(generator);
+    }
+  }, [isInitialChunksLoaded, changes, applyChangesToChunk, updateTerrainReference]);
   
   // Function to get chunk coordinates from world position
   const getChunkCoords = useCallback((x: number, y: number, z: number) => {
@@ -470,9 +509,18 @@ const World: React.FC<WorldProps> = ({ worldId, seed, initialChanges, selectedBl
       action: 'remove'
     };
     
+    // Add to broken blocks set for collision detection
+    brokenBlocks.current.add(makeBlockKey(block.x, block.y, block.z));
+    
+    // Update changes state
     setChanges(prev => [...prev, change]);
     setPendingChanges(prev => [...prev, change]);
-  }, [camera.position]);
+    
+    // Update terrain reference immediately after breaking a block
+    if (terrainGenerator) {
+      updateTerrainReference(terrainGenerator);
+    }
+  }, [camera.position, terrainGenerator, updateTerrainReference]);
   
   // Handle block right click (place block)
   const handleBlockRightClick = useCallback((block: Block, face: number) => {
@@ -583,6 +631,63 @@ const World: React.FC<WorldProps> = ({ worldId, seed, initialChanges, selectedBl
       console.log(`[WORLD] Stats: ${chunkMetrics.current.visibleChunkCount} chunks visible, ${chunkMetrics.current.totalLoadedChunks} chunks loaded, ${chunkMetrics.current.blockChangesCount} block changes`);
     }
   });
+  
+  // Create enhanced terrain reference with block changes awareness
+  useEffect(() => {
+    if (!terrainGenerator) return;
+
+    // Process initial broken blocks from changes
+    if (initialChanges?.length > 0) {
+      initialChanges.forEach(change => {
+        if (change.action === 'remove') {
+          brokenBlocks.current.add(makeBlockKey(change.x, change.y, change.z));
+        }
+      });
+    }
+
+    // Create a terrain reference that considers broken blocks
+    const terrainWithChanges = {
+      getHeight: (x: number, z: number): number => {
+        if (!terrainGenerator) return 10; // Default fallback
+          
+        // Get the base terrain height at this position
+        let baseHeight = terrainGenerator.getHeight(x, z);
+        
+        // Now check for broken blocks to adjust the height
+        // We need to check all blocks from the terrain height downward
+        for (let y = baseHeight; y > 0; y--) {
+          const blockKey = makeBlockKey(x, y, z);
+          
+          // If this block has been broken
+          if (brokenBlocks.current.has(blockKey)) {
+            // If the block at this position is broken, the new height is one below
+            baseHeight = y - 1;
+          } else {
+            // Stop checking once we find a non-broken block
+            break;
+          }
+        }
+        
+        return baseHeight;
+      }
+    };
+    
+    // Set the terrain reference for collision detection
+    setTerrainReference(terrainWithChanges);
+    
+  }, [terrainGenerator, initialChanges]);
+
+  // Update the brokenBlocks tracker when new changes occur
+  useEffect(() => {
+    changes.forEach(change => {
+      if (change.action === 'remove') {
+        brokenBlocks.current.add(makeBlockKey(change.x, change.y, change.z));
+      } else if (change.action === 'place') {
+        // For completeness - if a block is placed where one was broken before
+        brokenBlocks.current.delete(makeBlockKey(change.x, change.y, change.z));
+      }
+    });
+  }, [changes]);
   
   // Render the world
   return (
