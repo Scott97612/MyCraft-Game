@@ -308,7 +308,7 @@ const Game: React.FC = () => {
       {/* Instructions */}
       <div className="instructions">
         <p>WASD to move, SPACE to jump</p>
-        <p>Left click to break blocks, right click to place blocks</p>
+        <p>Left click to break blocks, right click or press R to place blocks</p>
         <p>1-9 keys to select blocks</p>
         <p>Click to lock mouse, ESC to unlock</p>
       </div>
