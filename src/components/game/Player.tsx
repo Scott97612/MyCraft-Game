@@ -2,7 +2,6 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { PointerLockControls } from '@react-three/drei';
 import { Vector3 } from 'three';
-import { PlayerState } from '../../utils/types';
 
 interface PlayerProps {
   onPlayerMove: (position: [number, number, number]) => void;
@@ -25,6 +24,8 @@ export const setTerrainReference = (terrain: TerrainCheck) => {
 
 const Player: React.FC<PlayerProps> = ({ onPlayerMove, onPlayerRotate }) => {
   const { camera } = useThree();
+  // Using type assertion for the PointerLockControls ref because the type definition doesn't 
+  // expose all runtime properties we need (isLocked, moveRight, moveForward)
   const controlsRef = useRef<any>(null);
   const velocity = useRef<Vector3>(new Vector3(0, 0, 0));
   const direction = useRef<Vector3>(new Vector3(0, 0, 0));
@@ -47,9 +48,9 @@ const Player: React.FC<PlayerProps> = ({ onPlayerMove, onPlayerRotate }) => {
   const lastFrameTime = useRef(0);
   
   // Constants
-  const SPEED = 10;
-  const GRAVITY = 30;
-  const JUMP_FORCE = 10;
+  const SPEED = 7;
+  const GRAVITY = 2; // Adjusted gravity for better feel
+  const JUMP_FORCE = 0.4; // Initial upward velocity when jumping
   const UPDATE_INTERVAL = 100; // Throttle updates to 10 per second
   const POSITION_THRESHOLD = 0.1; // Only update if moved more than this
   
@@ -99,10 +100,10 @@ const Player: React.FC<PlayerProps> = ({ onPlayerMove, onPlayerRotate }) => {
     console.log(`Key down: ${e.code}`);
     switch (e.code) {
       case 'KeyW':
-        setMoveForward(true);
+        setMoveBackward(true); // W is negative Z (forward in three.js)
         break;
       case 'KeyS':
-        setMoveBackward(true);
+        setMoveForward(true); // S is positive Z (backward in three.js)
         break;
       case 'KeyA':
         setMoveLeft(true);
@@ -122,10 +123,10 @@ const Player: React.FC<PlayerProps> = ({ onPlayerMove, onPlayerRotate }) => {
     console.log(`Key up: ${e.code}`);
     switch (e.code) {
       case 'KeyW':
-        setMoveForward(false);
+        setMoveBackward(false); // W is negative Z (forward in three.js)
         break;
       case 'KeyS':
-        setMoveBackward(false);
+        setMoveForward(false); // S is positive Z (backward in three.js)
         break;
       case 'KeyA':
         setMoveLeft(false);
@@ -177,7 +178,7 @@ const Player: React.FC<PlayerProps> = ({ onPlayerMove, onPlayerRotate }) => {
       
       // Apply movement
       if (moveForward || moveBackward) {
-        velocity.current.z = -direction.current.z * SPEED * delta;
+        velocity.current.z = direction.current.z * SPEED * delta; // Removed the negative sign to correct direction
       } else {
         velocity.current.z = 0;
       }
@@ -220,14 +221,21 @@ const Player: React.FC<PlayerProps> = ({ onPlayerMove, onPlayerRotate }) => {
       
       // Apply gravity with proper terrain collision
       if (camera.position.y > terrainHeight) {
+        // Apply gravity - continuous acceleration downward
         velocity.current.y -= GRAVITY * delta;
         setIsGrounded(false);
         
+        // Cap maximum falling speed to prevent falling through objects at high velocities
+        if (velocity.current.y < -20) {
+          velocity.current.y = -20;
+        }
+        
         // Log collision info occasionally
         if (frameCount.current % 100 === 0) {
-          console.log(`[COLLISION] Player position: ${camera.position.x.toFixed(2)}, ${camera.position.y.toFixed(2)}, ${camera.position.z.toFixed(2)}, isGrounded: ${isGrounded}, terrainHeight: ${terrainHeight}`);
+          console.log(`[COLLISION] Player position: ${camera.position.x.toFixed(2)}, ${camera.position.y.toFixed(2)}, ${camera.position.z.toFixed(2)}, isGrounded: ${isGrounded}, terrainHeight: ${terrainHeight}, velocity Y: ${velocity.current.y.toFixed(2)}`);
         }
       } else {
+        // Landing on ground
         velocity.current.y = 0;
         camera.position.y = terrainHeight; // Position player on top of terrain
         setIsGrounded(true);
@@ -237,9 +245,9 @@ const Player: React.FC<PlayerProps> = ({ onPlayerMove, onPlayerRotate }) => {
         }
       }
       
-      // Apply jump
+      // Apply jump - just set initial velocity and let physics handle the rest
       if (jump && isGrounded) {
-        velocity.current.y = JUMP_FORCE * delta;
+        velocity.current.y = JUMP_FORCE; // No delta multiplication - this is initial velocity
         setJump(false);
         setIsGrounded(false);
       }
@@ -267,15 +275,46 @@ const Player: React.FC<PlayerProps> = ({ onPlayerMove, onPlayerRotate }) => {
             if (isNaN(newTerrainHeight) || !isFinite(newTerrainHeight)) {
               console.error(`[TERRAIN] Invalid new terrain height at (${newX}, ${newZ}): ${newTerrainHeight}`);
             } else {
-              // If the new terrain height is higher than our current position and we're grounded,
-              // this means we're trying to walk up a steep slope or into a wall
-              if (isGrounded && newTerrainHeight > camera.position.y + 0.5) { // Allow for small steps (0.5 blocks)
-                // Revert to old position (don't allow movement)
-                camera.position.x = oldX;
-                camera.position.z = oldZ;
-                
-                if (frameCount.current % 100 === 0) {
-                  console.log(`[COLLISION] Blocked movement at ${newX.toFixed(2)}, ${newZ.toFixed(2)}, terrain height: ${newTerrainHeight}`);
+              // FIXED: Improved collision logic to respect jump arcs
+              
+              // If we're on the ground, only allow small steps (0.5 blocks)
+              if (isGrounded) {
+                if (newTerrainHeight > camera.position.y + 0.5) {
+                  // Revert horizontal movement - can't step up that high
+                  camera.position.x = oldX;
+                  camera.position.z = oldZ;
+                  
+                  if (frameCount.current % 100 === 0) {
+                    console.log(`[COLLISION] Blocked ground movement at ${newX.toFixed(2)}, ${newZ.toFixed(2)}, terrain height: ${newTerrainHeight}`);
+                  }
+                }
+              } 
+              // If we're actively jumping (moving upward)
+              else if (velocity.current.y > 0) {
+                // Check if we would horizontally collide with a block that's too high to jump onto
+                if (newTerrainHeight > camera.position.y) {
+                  // Calculate where the player would be if they continued their jump arc
+                  const projectedHeight = camera.position.y + velocity.current.y;
+                  
+                  // If the projected height is still below the terrain, we'd hit the side of the block
+                  if (projectedHeight < newTerrainHeight) {
+                    // Block horizontal movement - this maintains the vertical jumping motion
+                    camera.position.x = oldX;
+                    camera.position.z = oldZ;
+                    
+                    if (frameCount.current % 100 === 0) {
+                      console.log(`[COLLISION] Jump blocked by terrain wall: current height=${camera.position.y.toFixed(2)}, projected=${projectedHeight.toFixed(2)}, terrain=${newTerrainHeight.toFixed(2)}`);
+                    }
+                  }
+                  // Otherwise, if we'd clear the block top, allow the movement (proper jump over)
+                }
+              }
+              // If we're falling, check if we'd hit a block horizontally
+              else if (velocity.current.y < 0) {
+                if (newTerrainHeight > camera.position.y) {
+                  // Block horizontal movement while falling into a wall
+                  camera.position.x = oldX;
+                  camera.position.z = oldZ;
                 }
               }
             }
