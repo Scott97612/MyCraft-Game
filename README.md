@@ -1,54 +1,85 @@
-# React + TypeScript + Vite
+# MyCraft - A Minecraft-like Game in the Browser
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A voxel-based game similar to Minecraft, built with React, Three.js, and FastAPI.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- 3D voxel-based world with procedural terrain generation
+- Player movement with WASD keys and mouse look
+- Block placement and removal
+- Different block types with appropriate textures
+- World persistence using a FastAPI backend
 
-## Expanding the ESLint configuration
+## Prerequisites
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- Node.js (v14+)
+- Python (v3.8+)
+- npm or yarn
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
-```
+## Setup and Running
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Backend (FastAPI)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+1. Navigate to the server directory:
+   ```
+   cd server
+   ```
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
-```
+2. Create a virtual environment (optional but recommended):
+   ```
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+3. Install dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
+
+4. Run the server:
+   ```
+   python run.py
+   ```
+
+The server will start at http://localhost:8000.
+
+### Frontend (React)
+
+1. In a new terminal, navigate to the project root directory.
+
+2. Install dependencies:
+   ```
+   npm install
+   ```
+
+3. Run the development server:
+   ```
+   npm run dev
+   ```
+
+The frontend will start at http://localhost:5173.
+
+## How to Play
+
+- **Movement**: WASD keys to move, Space to jump
+- **Camera**: Move the mouse to look around
+- **Interaction**: Left-click to break blocks, right-click to place blocks
+- **Block Selection**: Use number keys 1-9 to select different block types
+- **Mouse Lock**: Click on the game to lock the mouse, press ESC to unlock
+
+## Project Structure
+
+- `/server`: FastAPI backend for world persistence
+  - `/app`: Main application code
+    - `/models`: Database models
+    - `/routers`: API endpoints
+- `/src`: React frontend
+  - `/components`: React components
+    - `/game`: Game-related components
+    - `/ui`: User interface components
+  - `/utils`: Utility functions and types
+  - `/hooks`: Custom React hooks
+
+## License
+
+MIT
