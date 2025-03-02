@@ -446,8 +446,23 @@ const World: React.FC<WorldProps> = ({ worldId, seed, initialChanges, selectedBl
   
   // Handle block click (remove block)
   const handleBlockClick = useCallback((block: Block, face: number) => {
+    // Verify the player is close enough to break this block (distance check)
+    const playerPos = new Vector3(camera.position.x, camera.position.y, camera.position.z);
+    const blockCenter = new Vector3(block.x + 0.5, block.y + 0.5, block.z + 0.5);
+    const distance = playerPos.distanceTo(blockCenter);
+    
+    // Define maximum interaction distance - should match the one in BlockInteraction.tsx
+    const MAX_BREAK_DISTANCE = 5;
+    
+    if (distance > MAX_BREAK_DISTANCE) {
+      if (DEBUG_BLOCK_CHANGES) {
+        console.log(`[WORLD] Cannot break block at ${block.x},${block.y},${block.z} - too far away (${distance.toFixed(2)} > ${MAX_BREAK_DISTANCE})`);
+      }
+      return;
+    }
+
     if (DEBUG_BLOCK_CHANGES) {
-      console.log(`[WORLD] Breaking block at ${block.x}, ${block.y}, ${block.z}`);
+      console.log(`[WORLD] Breaking block at ${block.x}, ${block.y}, ${block.z}, distance: ${distance.toFixed(2)}`);
     }
     
     const change: BlockChange = {
@@ -457,7 +472,7 @@ const World: React.FC<WorldProps> = ({ worldId, seed, initialChanges, selectedBl
     
     setChanges(prev => [...prev, change]);
     setPendingChanges(prev => [...prev, change]);
-  }, []);
+  }, [camera.position]);
   
   // Handle block right click (place block)
   const handleBlockRightClick = useCallback((block: Block, face: number) => {

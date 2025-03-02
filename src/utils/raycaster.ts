@@ -2,7 +2,7 @@ import { Camera, Raycaster, Vector3, Vector2, Object3D, Intersection } from 'thr
 import { Block } from './types';
 
 // Constants for configuration
-const MAX_DISTANCE = 5; // Max interaction distance (5 blocks)
+const MAX_DISTANCE = 5; // Max interaction distance (5 blocks) - must match BlockInteraction.tsx
 const INTERACTION_COOLDOWN = 250; // ms cooldown between interactions
 const DEBUG_RAYCASTING = false; // Enable for detailed debugging output
 
@@ -11,7 +11,7 @@ const raycaster = new Raycaster();
 // Center screen coordinates
 const screenCenter = new Vector2(0, 0);
 
-// Configure the raycaster
+// Configure the raycaster - set maximum distance
 raycaster.params.Points.threshold = 0.1;
 raycaster.far = MAX_DISTANCE;
 
@@ -128,11 +128,13 @@ export function updateRaycast(camera: Camera, objects: Object3D[]): {
  * Find a valid intersection from the intersections array
  */
 function findValidIntersection(intersects: Intersection[]): Intersection | null {
-  // First, check if any intersections have valid faceIndex
+  // First, filter by distance and valid face index
   const validIntersections = intersects.filter(i => {
     // Require faceIndex to be defined
     const hasFaceIndex = i.faceIndex !== undefined && i.faceIndex !== null;
-    return hasFaceIndex && isObjectWithBlockData(i.object);
+    // Must be within interaction distance
+    const isInRange = i.distance <= MAX_DISTANCE;
+    return hasFaceIndex && isInRange && isObjectWithBlockData(i.object);
   });
   
   // Sort by distance (closest first)

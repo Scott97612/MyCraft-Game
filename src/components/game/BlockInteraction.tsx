@@ -151,11 +151,12 @@ const BlockInteraction: React.FC<BlockInteractionProps> = ({ onBreakBlock, onPla
       return false;
     }
     
-    // Check distance
+    // *** STRICT DISTANCE CHECK ***
+    // Calculate exact distance to target block and enforce maximum interaction distance
     const distance = getDistanceToBlock(block);
     if (distance > MAX_INTERACTION_DISTANCE) {
-      interactionStats.current.lastFailureReason = `Block too far away: ${distance.toFixed(2)} blocks`;
-      console.log(`[INPUT] Block too far away: ${distance.toFixed(2)} blocks`);
+      interactionStats.current.lastFailureReason = `Block too far away: ${distance.toFixed(2)} blocks (max: ${MAX_INTERACTION_DISTANCE})`;
+      console.log(`[INPUT] Block too far away: ${distance.toFixed(2)} blocks (max: ${MAX_INTERACTION_DISTANCE})`);
       return false;
     }
     
